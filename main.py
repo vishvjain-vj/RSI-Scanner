@@ -400,6 +400,11 @@ def get_dashboard():
         
     return jsonify({"active_timeframe": active_tf, "data": dashboard_data})
 
+@app.route('/health')
+def health():
+    if stream_node["instance"] is None:
+        return jsonify({"status": "starting"}), 503  # Render retries
+    return jsonify({"status": "ready"}), 200
 
 # 🔥 NEW: Move the thread outside so Gunicorn triggers it immediately!
 engine_thread = threading.Thread(target=start_signal_engine)
