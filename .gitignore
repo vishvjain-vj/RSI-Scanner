@@ -1,0 +1,13 @@
+# Ignore Secret Keys
+.env
+
+# Ignore Python Caches & Logs
+__pycache__/
+logs/
+*.pyc
+
+# Ignore Local App Data
+session_cache.json
+scrip_master.json
+watchlist.csv
+dashboard_data.json
