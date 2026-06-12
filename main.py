@@ -384,10 +384,11 @@ def get_dashboard():
     return jsonify({"active_timeframe": active_tf, "data": dashboard_data})
 
 
+# 🔥 NEW: Move the thread outside so Gunicorn triggers it immediately!
+engine_thread = threading.Thread(target=start_signal_engine)
+engine_thread.daemon = True
+engine_thread.start()
+
 if __name__ == "__main__":
-    engine_thread = threading.Thread(target=start_signal_engine)
-    engine_thread.daemon = True
-    engine_thread.start()
-    
-    logger.info("🚀 Launching Web Interface Dashboard Engine on http://localhost:8000")
-    app.run(port=8000, debug=False, use_reloader=False)
+    logger.info("🚀 Launching Web on Localhost...")
+    app.run(host='0.0.0.0', port=5001, debug=False)
