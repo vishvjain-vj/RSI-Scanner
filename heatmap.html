@@ -157,6 +157,7 @@
         updateClock();
 
         function getBackgroundColor(rsi) {
+            if (rsi === null || rsi === undefined) return "#2c363f";
             if (rsi >= 75) return "#27632a"; 
             if (rsi >= 65) return "#3b8c3e"; 
             if (rsi >= 55) return "#1f618d"; 
@@ -247,12 +248,25 @@
                     body: JSON.stringify({ timeframe: new_tf })
                 });
                 const result = await response.json();
+
+                if (result.status === "loading") {
+                    // Engine is still logging in to Angel One (cold start on Fly.io)
+                    // Auto-retry every 5s — no user action needed
+                    document.getElementById('last-updated').style.color = "#e67e22";
+                    document.getElementById('last-updated').innerText = `⏳ Engine warming up... retrying in 5s`;
+                    setTimeout(() => changeTimeframe(new_tf, btnElement), 5000);
+                    return;
+                }
+
                 if (result.status === "success") {
                     currentTF = result.active;
                     fetchDashboardData(); 
                 }
             } catch (error) {
-                console.error("Error switching timeframe:", error);
+                // Network error — also retry so page self-heals
+                document.getElementById('last-updated').style.color = "#e74c3c";
+                document.getElementById('last-updated').innerText = `⚠️ Connection error — retrying in 5s`;
+                setTimeout(() => changeTimeframe(new_tf, btnElement), 5000);
             }
         }
 

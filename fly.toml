@@ -1,0 +1,44 @@
+# ============================================================
+# fly.toml — RSI Scanner
+# Deploy:   fly deploy
+# Logs:     fly logs
+# SSH:      fly ssh console
+# Secrets:  fly secrets set ANGEL_API_KEY=xxx ...
+# ============================================================
+
+app            = "rsi-scanner-vishv"   # must be globally unique on Fly
+primary_region = "bom"                 # Mumbai — closest to Angel One
+
+[build]
+  # Auto-detects Dockerfile in project root
+
+[env]
+  PORT             = "8000"
+  PYTHONUNBUFFERED = "1"
+  WATCHLIST_PATH   = "/data/watchlist.csv"
+  SCRIP_MASTER_PATH = "/data/scrip_master.json"
+
+[http_service]
+  internal_port        = 8000
+  force_https          = true
+  auto_stop_machines   = false    # CRITICAL — keeps engine thread alive always
+  auto_start_machines  = true
+  min_machines_running = 1
+
+  [http_service.checks]
+    [http_service.checks.engine_ready]
+      grace_period = "45s"        # Angel One login + 10s warmup can take ~30s
+      interval     = "10s"
+      method       = "GET"
+      path         = "/health"
+      timeout      = "5s"
+      type         = "http"
+
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "512mb"               # bumped to 512mb — 1000-candle buffers per stock need headroom
+
+[[mounts]]
+  source      = "rsi_data"       # create with: fly volumes create rsi_data --region bom --size 1
+  destination = "/data"
+  initial_size = "1gb"

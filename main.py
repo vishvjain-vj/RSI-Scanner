@@ -18,8 +18,8 @@ from websocket_manager import MarketWebSocketManager
 from candle_store import CandleStore
 from indicators import calculate_rsi
 
-WATCHLIST_FILE = "watchlist.csv"
-SCRIP_MASTER_FILE = "scrip_master.json"
+WATCHLIST_FILE    = os.environ.get("WATCHLIST_PATH", "watchlist.csv")
+SCRIP_MASTER_FILE = os.environ.get("SCRIP_MASTER_PATH", "scrip_master.json")
 SCRIP_MASTER_URL = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
 
 # 🎯 UPGRADED: Fetches ~800-1000 historic candles per timeframe for accurate RSI
@@ -194,6 +194,19 @@ def background_history_worker(tf, watchlist_items, session, stream, angel_interv
 # 🌐 FLASK LOCAL INTERFACES & CONTROL ENDPOINTS
 # =====================================================================
 
+@app.route('/health')
+def health():
+    """
+    Fly.io health check endpoint.
+    Fly waits for 200 here before routing any traffic — prevents the 503
+    on cold start that was happening on Render.
+    Returns 503 while the engine thread is still logging in to Angel One.
+    """
+    if stream_node["instance"] is None:
+        return jsonify({"status": "starting", "message": "Engine logging in to Angel One..."}), 503
+    return jsonify({"status": "ready"}), 200
+
+
 @app.route('/')
 def serve_dashboard():
     try:
@@ -322,7 +335,11 @@ def set_timeframe():
     session = stream_node["session"]
     watchlist = stream_node["token_watchlist"]
     
-    if not stream: return jsonify({"status": "error", "message": "Engine starting up..."}), 503
+    if not stream:
+        # Engine still logging in — return 202 so the frontend retries
+        # instead of showing a hard error. Fly health check prevents traffic
+        # until /health returns 200, but direct API calls during startup hit this.
+        return jsonify({"status": "loading", "message": "Engine starting up — retrying in 5s..."}), 202
 
     if new_tf in stream.store_matrix:
         is_first_activation = (stream.active_timeframe is None)
@@ -391,4 +408,4 @@ engine_thread.start()
 
 if __name__ == "__main__":
     logger.info("🚀 Launching Web on Localhost...")
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    app.run(host='0.0.0.0', port=8000, debug=False)

@@ -1,0 +1,33 @@
+# Secrets — never in the image
+.env
+*.env
+session_cache.json
+tokens/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Not needed at runtime
+*.xlsx
+*.pdf
+dashboard_data.json
+stock_selection.xlsx
+RenderCV_EngineeringResumes_Theme__1_.pdf
+
+# Git
+.git/
+.gitignore
+
+# Dev
+.vscode/
+.idea/
+*.log
+
+# Unused at runtime on Fly
+stock_selector.py
+screenerScraper.py
+Scraper.py
+verify_scraper.py
+angelone_diagnostic.py
