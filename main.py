@@ -18,8 +18,11 @@ from websocket_manager import MarketWebSocketManager
 from candle_store import CandleStore
 from indicators import calculate_rsi
 
-WATCHLIST_FILE    = os.environ.get("WATCHLIST_PATH", "watchlist.csv")
-SCRIP_MASTER_FILE = os.environ.get("SCRIP_MASTER_PATH", "scrip_master.json")
+# 🛡️ RENDER ABSOLUTE PATH SAFE RESOLUTION
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+WATCHLIST_FILE    = os.environ.get("WATCHLIST_PATH", os.path.join(BASE_DIR, "watchlist.csv"))
+SCRIP_MASTER_FILE = os.environ.get("SCRIP_MASTER_PATH", os.path.join(BASE_DIR, "scrip_master.json"))
 SCRIP_MASTER_URL = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
 
 # 🎯 UPGRADED: Fetches ~800-1000 historic candles per timeframe for accurate RSI
@@ -103,10 +106,13 @@ def start_signal_engine():
 
     while True:
         try:
-            for cache_file in ["../session_cache.json", "session_cache.json"]:
-                if os.path.exists(cache_file):
-                    try: os.remove(cache_file)
-                    except: pass
+            # Absolute path adjustments for session cleaners
+            for base_p in [BASE_DIR, os.path.dirname(BASE_DIR)]:
+                for fname in ["session_cache.json", "../session_cache.json"]:
+                    target_file = os.path.join(base_p, fname)
+                    if os.path.exists(target_file):
+                        try: os.remove(target_file)
+                        except: pass
 
             token_watchlist = init_watchlist_tokens()
             if not token_watchlist: return
@@ -145,8 +151,6 @@ def fetch_history_with_retry(session, token, symbol, angel_interval, days_back, 
             if history_df is not None and not history_df.empty:
                 return history_df
                 
-            # If API status is SUCCESS but data array is completely empty [] 
-            # (Common during weekends or holiday edge cases), don't waste time retrying 5 times.
             logger.warning(f"⚠️ Empty historical data returned for {symbol} (Attempt {attempt}/{max_retries})")
             
         except Exception as e:
@@ -155,14 +159,10 @@ def fetch_history_with_retry(session, token, symbol, angel_interval, days_back, 
                 logger.warning(f"🚨 Rate limit hit for {symbol}. Backing off for {backoff_delay}s...")
             else:
                 logger.error(f"❌ Structural error fetching {symbol}: {err_msg}")
-                # If it's a code error or an invalid token, retrying won't fix it. Exit early.
                 if "Invalid Token" in err_msg or "invalid signature" in err_msg:
                     break
                 
-        # Handle backoff sleep execution
         time.sleep(backoff_delay)
-        
-        # 🎯 THE FIX: Multiply backoff but CAP IT at 4 seconds max so the background queue never freezes!
         backoff_delay = min(backoff_delay * 2, 4.0) 
         
     return None
@@ -184,7 +184,7 @@ def background_history_worker(tf, watchlist_items, session, stream, angel_interv
         else:
             store.latest_rsi = None
             store.latest_price = 0.0
-            store.fetch_status = "ERROR" # UI will render a red failure card
+            store.fetch_status = "ERROR"
             
     stream.matrix_timestamps[tf] = time.time()
     logger.info(f"🏁 Background fetch complete for {tf}")
@@ -196,12 +196,6 @@ def background_history_worker(tf, watchlist_items, session, stream, angel_interv
 
 @app.route('/health')
 def health():
-    """
-    Fly.io health check endpoint.
-    Fly waits for 200 here before routing any traffic — prevents the 503
-    on cold start that was happening on Render.
-    Returns 503 while the engine thread is still logging in to Angel One.
-    """
     if stream_node["instance"] is None:
         return jsonify({"status": "starting", "message": "Engine logging in to Angel One..."}), 503
     return jsonify({"status": "ready"}), 200
@@ -210,10 +204,12 @@ def health():
 @app.route('/')
 def serve_dashboard():
     try:
-        with open('heatmap.html', 'r') as f:
+        # 🛡️ Safe path translation for Render directory context
+        target_html = os.path.join(BASE_DIR, 'heatmap.html')
+        with open(target_html, 'r') as f:
             return f.read()
     except FileNotFoundError:
-        return "heatmap.html file missing from execution folder.", 404
+        return f"heatmap.html file missing from execution folder path: {BASE_DIR}", 404
 
 @app.route('/search_ticker', methods=['GET'])
 def search_ticker():
@@ -336,9 +332,6 @@ def set_timeframe():
     watchlist = stream_node["token_watchlist"]
     
     if not stream:
-        # Engine still logging in — return 202 so the frontend retries
-        # instead of showing a hard error. Fly health check prevents traffic
-        # until /health returns 200, but direct API calls during startup hit this.
         return jsonify({"status": "loading", "message": "Engine starting up — retrying in 5s..."}), 202
 
     if new_tf in stream.store_matrix:
@@ -351,13 +344,11 @@ def set_timeframe():
             angel_interval = interval_map.get(new_tf, "FIVE_MINUTE")
             days_back = DAYS_BACK_MAP.get(new_tf, 5)
 
-            # 🎯 Instantly create placeholders for the frontend to show "LOADING"
             for token, symbol in list(watchlist.items()):
                 store = CandleStore(token=token, symbol=symbol, timeframe=new_tf, max_buffer=1500)
                 store.fetch_status = "LOADING" 
                 stream.store_matrix[new_tf][token] = store
                 
-            # 🎯 Spin up the background worker thread so the web request returns instantly!
             t = threading.Thread(target=background_history_worker, args=(new_tf, list(watchlist.items()), session, stream, angel_interval, days_back))
             t.daemon = True
             t.start()
@@ -382,10 +373,7 @@ def get_dashboard():
         for token, store in list(stream.store_matrix[active_tf].items()):
             price = getattr(store, 'latest_price', 0.0)
             rsi   = getattr(store, 'latest_rsi', None)
-            # Fetch the status we set dynamically
             status = getattr(store, 'fetch_status', 'READY')
-            
-            # 🔥 NEW: Extract ATP from the store safely
             atp = getattr(store, 'latest_atp', None)
 
             if price == 0.0 and not store.history.empty:
@@ -395,22 +383,23 @@ def get_dashboard():
                 "price": price,
                 "rsi":   rsi, 
                 "status": status,
-                "atp": atp        # 🔥 NEW: Add ATP to JSON payload
+                "atp": atp        
             }
         
     return jsonify({"active_timeframe": active_tf, "data": dashboard_data})
 
-@app.route('/health')
-def health():
-    if stream_node["instance"] is None:
-        return jsonify({"status": "starting"}), 503  # Render retries
-    return jsonify({"status": "ready"}), 200
-
-# 🔥 NEW: Move the thread outside so Gunicorn triggers it immediately!
-engine_thread = threading.Thread(target=start_signal_engine)
-engine_thread.daemon = True
-engine_thread.start()
-
+# =====================================================================
+# ⚙️ RENDER LIFECYCLE INITIALIZER HOOK
+# =====================================================================
 if __name__ == "__main__":
-    logger.info("🚀 Launching Web on Localhost...")
-    app.run(host='0.0.0.0', port=8000, debug=False)
+    # Fire up the worker background thread monitoring engine
+    engine_thread = threading.Thread(target=start_signal_engine)
+    engine_thread.daemon = True
+    engine_thread.start()
+    
+    # Extract the port dynamically provided by Render's routing mesh
+    render_assigned_port = int(os.environ.get("PORT", 8000))
+    logger.info(f"🚀 Initializing web architecture on port: {render_assigned_port}")
+    
+    # Boot production Flask framework instance
+    app.run(host="0.0.0.0", port=render_assigned_port, debug=False, use_reloader=False)
