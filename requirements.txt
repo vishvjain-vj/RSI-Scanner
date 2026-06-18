@@ -1,23 +1,11 @@
-# ============================================================
-# requirements.txt — RSI Scanner
-# ============================================================
-
-# Web
-flask>=3.0.0,<4.0.0
-gunicorn>=22.0.0,<23.0.0
-
-# Angel One
-smartapi-python>=1.4.0
-pyotp>=2.9.0
-websocket-client>=1.7.0
-logzero>=1.7.0
-
-# Data
-pandas>=2.2.0,<3.0.0
-numpy>=1.26.0,<2.0.0
+flask
+gunicorn
+smartapi-python
+pyotp
+websocket-client
+logzero
+pandas
+numpy
 yfinance
-# Credentials
-python-dotenv>=1.0.0
-
-# HTTP
-requests>=2.31.0
+python-dotenv
+requests
