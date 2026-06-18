@@ -387,6 +387,10 @@ def get_dashboard():
             }
         
     return jsonify({"active_timeframe": active_tf, "data": dashboard_data})
+
+    @app.route('/health', methods=['GET'])
+    def health_check():
+        return jsonify({"status": "healthy", "timestamp": time.time()}), 200
 # =====================================================================
 # ⚙️ RENDER LIFECYCLE INITIALIZER HOOK
 # =====================================================================
@@ -395,6 +399,7 @@ def get_dashboard():
 engine_thread = threading.Thread(target=start_signal_engine)
 engine_thread.daemon = True
 engine_thread.start()
+
 
 if __name__ == "__main__":
     # Extract the port dynamically provided by Render's routing mesh
