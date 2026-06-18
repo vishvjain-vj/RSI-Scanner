@@ -387,16 +387,16 @@ def get_dashboard():
             }
         
     return jsonify({"active_timeframe": active_tf, "data": dashboard_data})
-
 # =====================================================================
 # ⚙️ RENDER LIFECYCLE INITIALIZER HOOK
 # =====================================================================
+
+# 🔥 FIX: Move these 3 lines OUTSIDE so Gunicorn triggers them immediately!
+engine_thread = threading.Thread(target=start_signal_engine)
+engine_thread.daemon = True
+engine_thread.start()
+
 if __name__ == "__main__":
-    # Fire up the worker background thread monitoring engine
-    engine_thread = threading.Thread(target=start_signal_engine)
-    engine_thread.daemon = True
-    engine_thread.start()
-    
     # Extract the port dynamically provided by Render's routing mesh
     render_assigned_port = int(os.environ.get("PORT", 8000))
     logger.info(f"🚀 Initializing web architecture on port: {render_assigned_port}")
