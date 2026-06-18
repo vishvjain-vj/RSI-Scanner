@@ -1,31 +1,24 @@
 #!/bin/sh
-# ============================================================
-# entrypoint.sh
-# Handles first-boot volume population then starts the app.
-# On subsequent boots, the user's saved watchlist is kept.
-# ============================================================
-
 set -e
 
-WATCHLIST="/data/watchlist.csv"
-SCRIP_MASTER="/data/scrip_master.json"
+# Update paths to match the internal non-root workspace
+WATCHLIST="/app/data/watchlist.csv"
+SCRIP_MASTER="/app/data/scrip_master.json"
 DEFAULT_WATCHLIST="./watchlist_default.csv"
 
-# First boot — copy default watchlist to persistent volume
+# First boot — copy default watchlist to local volume
 if [ ! -f "$WATCHLIST" ]; then
-    echo "[entrypoint] First boot — copying default watchlist to /data/"
+    echo "[entrypoint] Initializing data directory — copying default watchlist"
     cp "$DEFAULT_WATCHLIST" "$WATCHLIST"
 else
     LINES=$(wc -l < "$WATCHLIST")
-    echo "[entrypoint] Persistent watchlist found — ${LINES} lines (tickers preserved)"
+    echo "[entrypoint] Local watchlist found — ${LINES} lines preserved"
 fi
 
-# scrip_master.json is downloaded at runtime by main.py if missing
-# Pre-existing one on the volume is reused (saves startup time)
 if [ -f "$SCRIP_MASTER" ]; then
-    echo "[entrypoint] Scrip master cache found on volume — will reuse"
+    echo "[entrypoint] Scrip master cache found — reusing"
 else
-    echo "[entrypoint] No scrip master cache — will download fresh on startup"
+    echo "[entrypoint] No scrip master cache — downloading fresh on startup"
 fi
 
 echo "[entrypoint] Starting RSI Scanner on port 8000..."
