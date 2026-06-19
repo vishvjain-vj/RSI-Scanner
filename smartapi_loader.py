@@ -139,20 +139,13 @@ def _get_scrip_master():
 def get_token(nse_symbol: str) -> str:
     """
     Get AngelOne symbol token for any NSE equity.
-
-    Usage:
-        get_token("RELIANCE")  ->  "2885"
-        get_token("TCS")       ->  "11536"
-        get_token("HDFCBANK")  ->  "1333"
-        get_token("INFY")      ->  "1594"
-
-    Strips .NS or .BO suffix automatically if passed.
+    Supports standard -EQ equities as well as special segments like -BE and -BZ series.
     """
     symbol = nse_symbol.upper().replace(".NS","").replace(".BO","").strip()
     df     = _get_scrip_master()
 
-    # Primary match: "SYMBOL-EQ" in NSE segment
-    m = df[(df["exch_seg"]=="NSE") & (df["symbol"].str.upper()==f"{symbol}-EQ")]
+    # Primary match: Checks for "SYMBOL-EQ" OR matches the exact symbol string directly (handles -BE/-BZ)
+    m = df[(df["exch_seg"]=="NSE") & ((df["symbol"].str.upper() == f"{symbol}-EQ") | (df["symbol"].str.upper() == symbol))]
     if not m.empty:
         token = str(m.iloc[0]["token"])
         print(f"[token] {symbol} -> {token} ✓")
@@ -167,7 +160,7 @@ def get_token(nse_symbol: str) -> str:
 
     raise ValueError(
         f"'{symbol}' not found in AngelOne instrument master.\n"
-        f"Use exact NSE trading symbol e.g. 'RELIANCE', 'TCS', 'HDFCBANK'."
+        f"Use exact NSE trading symbol e.g. 'RELIANCE', 'TCS'."
     )
 
 # ─────────────────────────────────────────────────────────────
@@ -198,8 +191,11 @@ def _fetch_chunk(obj, token, interval, from_dt, to_dt):
     # 1. Build the DataFrame normally
     df = pd.DataFrame(raw, columns=["datetime", "open", "high", "low", "close", "volume"])
 
-# 2. Use .loc to modify the column safely without any warnings
-    df.loc[:, "datetime"] = pd.to_datetime(df["datetime"])
+    # 2. BULLETPROOF FIX FOR PANDAS 3.0+: 
+    # Extract, drop the restricted 'str' column, and insert as a native datetime series
+    parsed_timestamps = pd.to_datetime(df["datetime"])
+    df = df.drop(columns=["datetime"])
+    df.insert(0, "datetime", parsed_timestamps)
     
     df = df.set_index("datetime")
     if df.index.tz is not None:
