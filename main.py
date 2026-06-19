@@ -16,6 +16,13 @@ import pandas as pd
 from datetime import datetime
 from logzero import logger
 
+# =====================================================================
+# 🔑 FIX: Force working directory to the writable data folder 
+# This lets the AngelOne SDK create its 'logs' folder safely!
+# =====================================================================
+if os.path.exists("/app/data"):
+    os.chdir("/app/data")
+    
 app = Flask(__name__)
 
 from smartapi_loader import login, get_token, fetch_smartapi
