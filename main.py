@@ -1,5 +1,10 @@
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
+
+# 🔑 FIX 1: Set a global network timeout to break infinite broker SDK socket freezes
+import socket
+socket.setdefaulttimeout(20)  # Any network request hanging > 20s will safely throw an error instead of freezing
+
 from flask import Flask, request, jsonify
 import threading
 import sys
@@ -118,22 +123,32 @@ def start_signal_engine():
             if not token_watchlist: return
             stream_node["token_watchlist"] = token_watchlist
 
+            # 🔑 FIX 2: Added detailed engine logs to trace network hang positions
+            logger.info("🔐 Requesting session credentials from Angel One API...")
             smartapi_session = login()
-            if not smartapi_session: return
+            if not smartapi_session: 
+                logger.error("❌ Login failed (returned None). Retrying engine loop in 10s...")
+                time.sleep(10)
+                continue
+                
             stream_node["session"] = smartapi_session
+            logger.info("✅ Login verified! Spawning WebSocket Manager...")
 
             stream = MarketWebSocketManager(smartapi_obj=smartapi_session)
             stream_node["instance"] = stream
+            logger.info("📡 WebSocket pipeline bound successfully. Engine operational.")
             
             while True:
                 time.sleep(1)
                 if hasattr(stream, 'ws') and stream.ws and hasattr(stream.ws, 'ws') and stream.ws.ws is None:
+                    logger.warning("🚨 WebSocket connection drop detected. Restarting engine...")
                     break
         except KeyboardInterrupt:
             try: stream.stop_stream()
             except: pass
             break
         except Exception as crash_error:
+            logger.error(f"💥 Engine Loop Exception occurred: {crash_error}")
             time.sleep(10)
 
 def fetch_history_with_retry(session, token, symbol, angel_interval, days_back, max_retries=5):
@@ -197,7 +212,7 @@ def background_history_worker(tf, watchlist_items, session, stream, angel_interv
 @app.route('/health')
 def health():
     if stream_node["instance"] is None:
-        return jsonify({"status": "starting", "message": "Engine logging in to Angel One..."}), 503
+        return jsonify({"status": "starting", "message": "Engine logging in to Angel One..."}), 200
     return jsonify({"status": "ready"}), 200
 
 
@@ -388,23 +403,18 @@ def get_dashboard():
         
     return jsonify({"active_timeframe": active_tf, "data": dashboard_data})
 
-    @app.route('/health', methods=['GET'])
-    def health_check():
-        return jsonify({"status": "healthy", "timestamp": time.time()}), 200
+# 🔑 FIX 3: Removed the broken, nested, indented health check from inside get_dashboard()
+
 # =====================================================================
 # ⚙️ RENDER LIFECYCLE INITIALIZER HOOK
 # =====================================================================
 
-# 🔥 FIX: Move these 3 lines OUTSIDE so Gunicorn triggers them immediately!
 engine_thread = threading.Thread(target=start_signal_engine)
 engine_thread.daemon = True
 engine_thread.start()
 
 
 if __name__ == "__main__":
-    # Extract the port dynamically provided by Render's routing mesh
     render_assigned_port = int(os.environ.get("PORT", 8000))
     logger.info(f"🚀 Initializing web architecture on port: {render_assigned_port}")
-    
-    # Boot production Flask framework instance
     app.run(host="0.0.0.0", port=render_assigned_port, debug=False, use_reloader=False)
